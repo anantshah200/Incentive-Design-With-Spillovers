@@ -10,7 +10,7 @@ alpha = 3;
 x_min = 1;
 b_min = 0.5;
 
-total_simulations=60;
+total_simulations=100;
 options = optimoptions("fmincon","MaxIterations",1e5,"MaxFunctionEvaluations",1e5,"EnableFeasibilityMode",true,"SubproblemAlgorithm","cg");  
 
 agent_count = 1;
@@ -273,6 +273,13 @@ function equilibrium = eqlb_action(contract,eqlb_initialization,beta,b,G,sig_ste
     %% Our game is a potential game. Take best responses one agent at a time.
     %% How do you choose such an agent? Choose an agent randomly to best respond?
     %% Stopping criterion: norm of the first-order conditions is small
+
+    %options = optimoptions('fmincon', 'Display', 'off');
+    options = optimoptions('fmincon','Display','off','FiniteDifferenceType','central');
+
+    %% Our game is a potential game. Take best responses one agent at a time.
+    %% How do you choose such an agent? Choose an agent randomly to best respond?
+    %% Stopping criterion: norm of the first-order conditions is small
     
     count = 0;
 
@@ -280,10 +287,111 @@ function equilibrium = eqlb_action(contract,eqlb_initialization,beta,b,G,sig_ste
     %% The contract design problem is a weighted potential game where the potential function
     %% phi = P(Y) - \sum_{i}a_{i}^2/\tau_{i}, and the weights are \tau_{i}
 
-    a_init = eqlb_initialization;
-    potential = @(x) -success_probability(team_performance(x,beta,b,G),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+    %a_init = eqlb_initialization;
+    %potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
 
-    equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
+    %equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
+
+    %% Compute equilibrium using a fixed point subroutine
+    %% Compute limits within which you will do binary search
+    y_max = 4;
+    y_min = 0;
+
+    spillover_max = derivative_success_probability(y_max,sig_step)*beta*diag(utilities(contract))*G;
+    eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*b);
+    a_ymax = team_performance(eqlb_max,beta,b,G);
+    while a_ymax > y_max
+        y_max = 2*y_max;
+        spillover_max = derivative_success_probability(y_max,sig_step)*beta*diag(utilities(contract))*G;
+        eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*b);
+        a_ymax = team_performance(eqlb_max,beta,b,G);
+    end
+
+    y_max_temp = y_max;
+
+    spillover = derivative_success_probability(y_min,sig_step)*beta*diag(utilities(contract))*G;
+    while norm(spillover) > 1
+        y_min = y_min + (y_max_temp-y_min)/2;
+        spillover = derivative_success_probability(y_min,sig_step)*beta*diag(utilities(contract))*G;
+        count = count + 1;
+        if count > 1000
+            %disp("getting stuck here")
+            break
+        end
+    end
+
+    eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*b);
+    a_y = team_performance(eqlb,beta,b,G);
+    count1 = 0;
+    count2 = 0;
+    while y_min > a_y
+        y_max_temp = y_min;
+        y_min  = 0;
+        spillover = derivative_success_probability(y_min,sig_step)*beta*diag(utilities(contract))*G;
+        count2 = 0;
+        while norm(spillover) > 1
+            y_min = y_min + (y_max_temp-y_min)/2;
+            spillover = derivative_success_probability(y_min,sig_step)*beta*diag(utilities(contract))*G;
+            count2 = count2 + 1;
+            if count2 > 1000
+                %disp("getting stuck in the first loop");
+                %norm(spillover)
+                break
+            end
+        end    
+        eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*b);
+        a_y = team_performance(eqlb,beta,b,G);
+        count1 = count1 + 1;
+        if count1 > 1000
+            %disp("getting stuck in the second loop");
+            break
+        end
+    end
+
+    if y_min - a_y > 0
+        disp("Hello")
+    end
+
+    %% Now perform a binary search between y_min and y_max
+    count3 = 0;
+    while (y_max-y_min)^2 > 10^-6
+        y_temp = (y_min+y_max)/2;
+        spillover = derivative_success_probability(y_temp,sig_step)*beta*diag(utilities(contract))*G;
+        eqlb = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*b);
+        a_y = team_performance(eqlb,beta,b,G);
+        if a_y > y_temp
+            y_min = y_temp;
+        else
+            y_max = y_temp;
+        end
+        %(y_max-y_min)^2
+        count3 = count3 + 1;
+        if count3 > 10000
+            %disp("getting stuck in the final loop");
+            break
+        end
+    end
+
+    y_temp = (y_min+y_max)/2;
+    spillover = derivative_success_probability(y_temp,sig_step)*beta*diag(utilities(contract))*G;
+    equilibrium = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*b);
+
+    if count>1000 || count1>1000 || count2 > 1000 || count3 > 1000
+        % Solve for equilibrium using the potential method
+        disp("potential method")
+        a_init = eqlb_initialization;
+        potential = @(x) -success_probability(team_performance(x,beta,b,G),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+        equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
+    end
+
+    %% Solve for equilibrium by maximizing the potential function
+    %% The contract design problem is a weighted potential game where the potential function
+    %% phi = P(Y) - \sum_{i}a_{i}^2/\tau_{i}, and the weights are \tau_{i}
+
+%     a_init = eqlb_initialization;
+%     potential = @(x) -success_probability(team_performance(x,beta,b,G),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+% 
+%     equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
 end
 
 function eqlb_foc = eqlb_foc_norm(contract,action,beta,b,G)
