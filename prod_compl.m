@@ -8,7 +8,7 @@ options = optimoptions('fmincon', 'Display', 'off','FiniteDifferenceType','centr
 %options = optimoptions('fmincon','Display','off','Algorithm','sqp');
 %rho = 1;
 
-total_iter = 100;
+total_iter = 200;
 %k_list = linspace(0.9,1,total_iter);
 %beta_list = linspace(0.9,1,total_iter);
 
@@ -17,19 +17,19 @@ total_iter = 100;
 %beta = [0.5;0.8;1];
 %k = [1;0.8;0.5];
 k = zeros(n,1);
-k(1:floor(n/2)) = 0.5;
-k(floor(n/2)+1:n) = 0.25;
+k(1:floor(n/2)) = 0.3;
+k(floor(n/2)+1:n) = 0.15;
 
 beta = zeros(n,1);
-beta(1:floor(n/2)) = 0.25;
-beta(floor(n/2)+1:n) = 0.5;
+beta(1:floor(n/2)) = 0.15;
+beta(floor(n/2)+1:n) = 0.3;
 
 opt_solns_rhovary = zeros(n,total_iter);
 rho_list = linspace(0,10,total_iter);
 
 specrad_list = zeros(1,total_iter);
  
-total_simulations = 20;
+total_simulations = 40;
 
 ratio_payment = zeros(n_diff*(n_diff-1)/2,total_iter);
 %ratio_payment = zeros(1,total_iter);
@@ -56,7 +56,7 @@ for iter=1:total_iter
 
     for sim=1:total_simulations   
         sim
-        scale = 0.5*rand(); % Can choose any scaling in [0,0.5].
+        scale = 0.05+0.5*rand(); % Can choose any scaling in [0,0.5].
         rand_vec = zeros(1,n_diff+1);
         rand_vec(2:n_diff) = scale*rand(1,n_diff-1);
         rand_vec(n_diff+1) = scale;
@@ -116,8 +116,23 @@ for iter=1:total_iter
 end
 ratio_payment = ratio_payment ./ total_simulations;
 
+%% Sub-routine to smooth the curves
+
+ratio_payment_smooth = smoothdata(ratio_payment,'movmean',10);
+specrad_list_smooth = smoothdata(specrad_list,'movmean',10);
+
+%% Sub-routine to smooth the curves
+for smooth_iter=2:total_iter-1
+    if ratio_payment_smooth(smooth_iter) < ratio_payment_smooth(smooth_iter+1) || ratio_payment_smooth(smooth_iter) > ratio_payment_smooth(smooth_iter-1)
+        ratio_payment_smooth(smooth_iter) = (ratio_payment_smooth(smooth_iter+1) + ratio_payment_smooth(smooth_iter-1))/2;
+    end
+    if specrad_list_smooth(smooth_iter) < specrad_list_smooth(smooth_iter+1) || specrad_list_smooth(smooth_iter) > specrad_list_smooth(smooth_iter-1)
+        specrad_list_smooth(smooth_iter) = (specrad_list_smooth(smooth_iter+1) + specrad_list_smooth(smooth_iter-1))/2;
+    end
+end
+
 figure(1);
-plot(rho_list(1:total_iter/2),ratio_payment(1,1:total_iter/2),':','LineWidth',2);
+plot(rho_list,ratio_payment_smooth,':','LineWidth',2);
 %hold on
 %plot(rho_list(1:total_iter/2),ratio_payment(2,1:total_iter/2),':','LineWidth',2);
 %hold on
@@ -127,19 +142,19 @@ plot(rho_list(1:total_iter/2),ratio_payment(1,1:total_iter/2),':','LineWidth',2)
 xlabel("$\rho$",'Interpreter','latex')
 ylabel("Ratio of payments")
 
-figure(2);
-plot(rho_list(total_iter/2+1:total_iter),ratio_payment(1,total_iter/2+1:total_iter),':','LineWidth',2);
+%figure(2);
+%plot(rho_list(total_iter/2+1:total_iter),ratio_payment(1,total_iter/2+1:total_iter),':','LineWidth',2);
 %hold on
 %plot(rho_list(total_iter/2+1:total_iter),ratio_payment(2,total_iter/2+1:total_iter),':','LineWidth',2);
 %hold on
 %plot(rho_list(total_iter/2+1:total_iter),ratio_payment(3,total_iter/2+1:total_iter),'-.','LineWidth',2);
 %hold off
 %legend({'$\tau_{1} / \tau_{2}$','$\tau_{1} / \tau_{3}$','$\tau_{2} / \tau_{3}$'},'Interpreter','latex');
-xlabel("$\rho$",'Interpreter','latex');
-ylabel("Ratio of payments");
+%xlabel("$\rho$",'Interpreter','latex');
+%ylabel("Ratio of payments");
 
 figure(3);
-plot(rho_list,specrad_list,'LineWidth',2);
+plot(rho_list,specrad_list_smooth,'LineWidth',2);
 xlabel("$\rho$",'Interpreter','latex');
 ylabel("Spectral radius");
 
@@ -166,113 +181,113 @@ function equilibrium = eqlb_action_potential(contract_diff,eqlb_initialization,r
     %% How do you choose such an agent? Choose an agent randomly to best respond?
     %% Stopping criterion: norm of the first-order conditions is small
     
-%     count = 0;
-% 
-%     %% Solve for equilibrium by maximizing the potential function
-%     %% The contract design problem is a weighted potential game where the potential function
-%     %% phi = P(Y) - \sum_{i}a_{i}^2/\tau_{i}, and the weights are \tau_{i}
-% 
-%     %a_init = eqlb_initialization;
-%     %potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
-% 
-%     %equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
-% 
-%     %% Compute equilibrium using a fixed point subroutine
-%     %% Compute limits within which you will do binary search
-%     y_max = 4;
-%     y_min = 0;
-% 
-%     spillover_max = derivative_success_probability(y_max,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%     eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*k);
-%     a_ymax = team_performance(eqlb_max,rho,k,beta);
-%     while a_ymax > y_max
-%         y_max = 2*y_max;
-%         spillover_max = derivative_success_probability(y_max,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%         eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*k);
-%         a_ymax = team_performance(eqlb_max,rho,k,beta);
-%     end
-% 
-%     y_max_temp = y_max;
-% 
-%     spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%     while norm(spillover) > 1
-%         y_min = y_min + (y_max_temp-y_min)/2;
-%         spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%         count = count + 1;
-%         if count > 1000
-%             %disp("getting stuck here")
-%             break
-%         end
-%     end
-% 
-%     eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
-%     a_y = team_performance(eqlb,rho,k,beta);
-%     count1 = 0;
-%     count2 = 0;
-%     while y_min > a_y
-%         y_max_temp = y_min;
-%         y_min  = 0;
-%         spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%         count2 = 0;
-%         while norm(spillover) > 1
-%             y_min = y_min + (y_max_temp-y_min)/2;
-%             spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%             count2 = count2 + 1;
-%             if count2 > 1000
-%                 %disp("getting stuck in the first loop");
-%                 %norm(spillover)
-%                 break
-%             end
-%         end    
-%         eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
-%         a_y = team_performance(eqlb,rho,k,beta);
-%         count1 = count1 + 1;
-%         if count1 > 1000
-%             %disp("getting stuck in the second loop");
-%             break
-%         end
-%     end
-% 
-%     if y_min - a_y > 0
-%         disp("Hello")
-%     end
-% 
-%     %% Now perform a binary search between y_min and y_max
-%     count3 = 0;
-%     while (y_max-y_min)^2 > 10^-6
-%         y_temp = (y_min+y_max)/2;
-%         spillover = derivative_success_probability(y_temp,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%         eqlb = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
-%         a_y = team_performance(eqlb,rho,k,beta);
-%         if a_y > y_temp
-%             y_min = y_temp;
-%         else
-%             y_max = y_temp;
-%         end
-%         %(y_max-y_min)^2
-%         count3 = count3 + 1;
-%         if count3 > 10000
-%             %disp("getting stuck in the final loop");
-%             break
-%         end
-%     end
-% 
-%     y_temp = (y_min+y_max)/2;
-%     spillover = derivative_success_probability(y_temp,sig_step)*rho*diag(utilities(contract))*(beta*beta');
-%     equilibrium = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
-% 
-%     if count>1000 || count1>1000 || count2 > 1000 || count3 > 1000
-%         % Solve for equilibrium using the potential method
-%         disp("potential method")
-%         a_init = eqlb_initialization;
-%         potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
-%         equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
-%     end
+    count = 0;
+
+    %% Solve for equilibrium by maximizing the potential function
+    %% The contract design problem is a weighted potential game where the potential function
+    %% phi = P(Y) - \sum_{i}a_{i}^2/\tau_{i}, and the weights are \tau_{i}
 
     %a_init = eqlb_initialization;
-    a_init = zeros(n,1);
-    potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
-    equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1),[],[],options);
+    %potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+
+    %equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
+
+    %% Compute equilibrium using a fixed point subroutine
+    %% Compute limits within which you will do binary search
+    y_max = 4;
+    y_min = 0;
+
+    spillover_max = derivative_success_probability(y_max,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+    eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*k);
+    a_ymax = team_performance(eqlb_max,rho,k,beta);
+    while a_ymax > y_max
+        y_max = 2*y_max;
+        spillover_max = derivative_success_probability(y_max,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+        eqlb_max = derivative_success_probability(y_max,sig_step)*((eye(n)-spillover_max)^-1)*(utilities(contract).*k);
+        a_ymax = team_performance(eqlb_max,rho,k,beta);
+    end
+
+    y_max_temp = y_max;
+
+    spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+    while norm(spillover) > 1
+        y_min = y_min + (y_max_temp-y_min)/2;
+        spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+        count = count + 1;
+        if count > 1000
+            %disp("getting stuck here")
+            break
+        end
+    end
+
+    eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
+    a_y = team_performance(eqlb,rho,k,beta);
+    count1 = 0;
+    count2 = 0;
+    while y_min > a_y
+        y_max_temp = y_min;
+        y_min  = 0;
+        spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+        count2 = 0;
+        while norm(spillover) > 1
+            y_min = y_min + (y_max_temp-y_min)/2;
+            spillover = derivative_success_probability(y_min,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+            count2 = count2 + 1;
+            if count2 > 1000
+                %disp("getting stuck in the first loop");
+                %norm(spillover)
+                break
+            end
+        end    
+        eqlb = derivative_success_probability(y_min,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
+        a_y = team_performance(eqlb,rho,k,beta);
+        count1 = count1 + 1;
+        if count1 > 1000
+            %disp("getting stuck in the second loop");
+            break
+        end
+    end
+
+    if y_min - a_y > 0
+        disp("Hello")
+    end
+
+    %% Now perform a binary search between y_min and y_max
+    count3 = 0;
+    while (y_max-y_min)^2 > 10^-6
+        y_temp = (y_min+y_max)/2;
+        spillover = derivative_success_probability(y_temp,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+        eqlb = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
+        a_y = team_performance(eqlb,rho,k,beta);
+        if a_y > y_temp
+            y_min = y_temp;
+        else
+            y_max = y_temp;
+        end
+        %(y_max-y_min)^2
+        count3 = count3 + 1;
+        if count3 > 10000
+            %disp("getting stuck in the final loop");
+            break
+        end
+    end
+
+    y_temp = (y_min+y_max)/2;
+    spillover = derivative_success_probability(y_temp,sig_step)*rho*diag(utilities(contract))*(beta*beta');
+    equilibrium = derivative_success_probability(y_temp,sig_step)*((eye(n)-spillover)^-1)*(utilities(contract).*k);
+
+    if count>1000 || count1>1000 || count2 > 1000 || count3 > 1000
+        % Solve for equilibrium using the potential method
+        disp("potential method")
+        a_init = eqlb_initialization;
+        potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+        equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1));
+    end
+
+    %a_init = eqlb_initialization;
+    %a_init = zeros(n,1);
+    %potential = @(x) -success_probability(team_performance(x,rho,k,beta),sig_step) + sum(x.^2 ./ (2*utilities(contract)));
+    %equilibrium = fmincon(potential,a_init,[],[],[],[],zeros(n,1),[],[],options);
 end
 
 function eqlb_foc = eqlb_foc_norm(contract,action,beta,b,G)
@@ -281,7 +296,7 @@ function eqlb_foc = eqlb_foc_norm(contract,action,beta,b,G)
 end
 
 function sprob = success_probability(y,step)
-    %sprob = 1-exp(-y);
+    sprob = 1-exp(-y);
     %sprob = 0.5*y;
     %if y >= 1
     %    sprob = exp(-1)*(1-exp(-y+1))+1-exp(-1);
@@ -289,11 +304,11 @@ function sprob = success_probability(y,step)
     %if y < 1
     %    sprob = 1-exp(-y);
     %end
-    sprob = 1/(1+exp(-(y-step)));
+    %sprob = 1/(1+exp(-(y-step)));
 end
 
 function dprob = derivative_success_probability(y,step)
-    %dprob = exp(-y);
+    dprob = exp(-y);
     %dprob = 0.5;
     %if y >= 1
     %    dprob = exp(-1)*exp(-y+1);
@@ -301,7 +316,7 @@ function dprob = derivative_success_probability(y,step)
     %if y < 1
     %    dprob = exp(-y);
     %end
-    dprob = exp(-(y-step))/power(1+exp(-(y-step)),2);
+    %dprob = exp(-(y-step))/power(1+exp(-(y-step)),2);
 end
 
 function util = utilities(contract)
